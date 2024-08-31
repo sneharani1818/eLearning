@@ -10,12 +10,17 @@ dotenv.config();
 //authenticated user
 export const isAuthenticated = CatchAsyncError(
   async (req: Request, res: Response, next: NextFunction) => {
-    const access_token = req.cookies.access_token;
+    const access_token: any = req.cookies.access_token;
+    console.log(access_token);
+    console.log(req.body);
+    //if user not logged in
     if (!access_token) {
       return next(
         new ErrorHandler("Please login to access this resource", 400)
       );
     }
+
+    //
     const decoded = jwt.verify(
       access_token,
       process.env.ACCESS_TOKEN as string
