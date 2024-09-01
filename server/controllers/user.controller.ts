@@ -14,6 +14,8 @@ import {
   sendToken,
 } from "../utils/jwt";
 import { redis } from "../utils/redis";
+import { getUserById } from "../services/user.service";
+import cloudinary from "cloudinary";
 // import { registrationUser } from "./user.controller";
 
 //register user
@@ -181,7 +183,7 @@ export const logoutUser = CatchAsyncError(
         sameSite: "lax",
         path: "/",
       });
-      console.log(req.user);
+      // console.log(req.user);
       const userId: any = req.user?._id || "";
       redis.del(userId);
       res.status(200).json({
@@ -244,12 +246,161 @@ export const updateAccessToken = CatchAsyncError(
         }
       );
 
+      req.user = user;
+
       res.cookie("access_token", accessToken, accessTokenOptions);
       res.cookie("refres_token", refreshToken, refreshTokenOptions);
 
       res.status(200).json({
         success: true,
         accessToken,
+      });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+//get user info by id
+export const getUserInfo = CatchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.id;
+      console.log(req.user?.name);
+      getUserById(userId, res);
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+interface ISocialAuthBody {
+  email: string;
+  name: string;
+  avatar: string;
+}
+//social auth
+export const socialAuth = CatchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, name, avatar } = req.body as ISocialAuthBody;
+      const user = await userModel.findOne({ email });
+      if (!user) {
+        const newUser = await userModel.create({ email, name, avatar });
+        sendToken(newUser, 200, res);
+      } else {
+        sendToken(user, 200, res);
+      }
+    } catch (error: any) {}
+  }
+);
+
+//update user info
+interface IUpdateUSerInfo {
+  name?: string;
+  email?: string;
+}
+
+export const updateUserInfo = CatchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { name, email } = req.body as IUpdateUSerInfo;
+      console.log(name);
+      console.log(email);
+      const userId = req.user?._id;
+      if (!userId) {
+        return next(new ErrorHandler("User not authenticated", 401));
+      }
+      const user = await userModel.findById(userId);
+      if (!user) {
+        return next(new ErrorHandler("User not found", 404));
+      }
+
+      if (email && user) {
+        const isEmailExist = await userModel.findOne({ email });
+        if (isEmailExist) {
+          return next(new ErrorHandler("Email already exists", 400));
+        }
+        user.email = email;
+      }
+      if (name && user) {
+        user.name = name;
+      }
+      // Save the updated user object
+      await user?.save();
+      await redis.set(req.user?.id, JSON.stringify(user)); //update redis
+      console.log("User info updated successfully");
+      res.status(200).json({ success: true, user });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+//update user password
+interface IUpdatePassword {
+  oldPassword: string;
+  newPassword: string;
+}
+export const updatePassword = CatchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { oldPassword, newPassword } = req.body as IUpdatePassword;
+      if (!oldPassword || !newPassword) {
+        return next(new ErrorHandler("Please enter old and new password", 400));
+      }
+      const user = await userModel.findById(req.user?._id).select("+password");
+      if (user?.password === undefined) {
+        return next(new ErrorHandler("Invalid User", 400));
+      }
+
+      const isPassword = await user?.comparePassword(oldPassword);
+      if (!isPassword) {
+        //invalid old password
+        return next(new ErrorHandler("Invalid old password", 400));
+      }
+      user.password = newPassword;
+
+      await user.save();
+      await redis.set(req.user?.id, JSON.stringify(user)); //update redis
+
+      res.status(200).json({ success: true, user });
+    } catch (error: any) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  }
+);
+
+//update profile picture or avatar
+interface IUpdateProfilePicture {
+  avatar: string;
+}
+export const updateProfilePicture = CatchAsyncError(
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { avatar } = req.body as IUpdateProfilePicture;
+      const userId = req.user?._id;
+      const user = await userModel.findById(userId);
+      if (avatar && user) {
+        if (user?.avatar?.public_id) {
+          //if any existing profile then remove it
+          await cloudinary.v2.uploader.destroy(user?.avatar?.public_id);
+        }
+        //now upload avatar
+        const myCloud = await cloudinary.v2.uploader.upload(avatar, {
+          folder: "avatars",
+          width: 150,
+        });
+        user.avatar = {
+          public_id: myCloud.public_id,
+          url: myCloud.secure_url,
+        };
+      }
+      await user?.save();
+      await redis.set(req?.user?.id, JSON.stringify(user));
+      res.status(200).json({
+        success: true,
+        user,
       });
     } catch (error: any) {
       return next(new ErrorHandler(error.message, 400));

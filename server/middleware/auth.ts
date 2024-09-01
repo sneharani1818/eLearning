@@ -5,6 +5,7 @@ import jwt, { JwtPayload } from "jsonwebtoken";
 import { redis } from "../utils/redis";
 
 import dotenv from "dotenv";
+import { authorizeRoles } from "../controllers/user.controller";
 dotenv.config();
 
 //authenticated user
