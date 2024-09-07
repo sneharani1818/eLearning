@@ -5,6 +5,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import userRouter from "./routes/user.route";
+import courseRouter from "./routes/course.route";
 
 import { ErrorMiddleware } from "./middleware/error";
 //body parser
@@ -23,6 +24,7 @@ app.use(
 
 //routes
 app.use("/api/v1", userRouter);
+app.use("/api/v1", courseRouter);
 
 //testing api
 app.get("/test", (req: Request, res: Response, next: NextFunction) => {
@@ -38,5 +40,7 @@ app.all("*", (req: Request, res: Response, next: NextFunction) => {
   err.statusCode = 404;
   next(err);
 });
+
+//creating a new course
 
 app.use(ErrorMiddleware);
